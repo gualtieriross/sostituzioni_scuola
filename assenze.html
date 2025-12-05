@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Gestione assenze</h2>
+
+<div style="display:flex; gap:40px; align-items:flex-start;">
+
+  <!-- COLONNA SINISTRA: INSERIMENTO ASSENZA DA ORARIO -->
+  <div style="flex:1;">
+    <h3>Inserisci assenza da orario</h3>
+    <form method="post">
+        <div>
+            <label>Docente</label><br>
+            <select name="docente_id" required>
+                <option value="">-- Seleziona docente --</option>
+                {% for d in docenti %}
+                    <option value="{{ d.id }}">
+                        {{ d.cognome }}{% if d.nome %} {{ d.nome }}{% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label>Data</label><br>
+            <input type="date" name="data" required>
+        </div>
+
+        <div>
+            <label>Note (facoltative)</label><br>
+            <textarea name="note" rows="2" cols="40"></textarea>
+        </div>
+
+        <div style="margin-top:10px;">
+            <!-- Unico bottone: carica orario e SALVA subito -->
+            <button type="submit">
+                Inserisci assenza (da orario)
+            </button>
+        </div>
+    </form>
+  </div>
+
+  <!-- COLONNA DESTRA: FILTRI -->
+  <div style="flex:1;">
+    <h3>Filtra assenze</h3>
+    <form method="get">
+        <div>
+            <label>Docente</label><br>
+            <select name="f_docente_id">
+                <option value="">-- Tutti --</option>
+                {% for d in docenti %}
+                    <option value="{{ d.id }}"
+                        {% if f_docente_id and f_docente_id|int == d.id %}selected{% endif %}>
+                        {{ d.cognome }}{% if d.nome %} {{ d.nome }}{% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label>Data</label><br>
+            <input type="date" name="f_data"
+                   {% if f_data %}value="{{ f_data }}"{% endif %}>
+        </div>
+
+        <div style="margin-top:10px;">
+            <button type="submit">Applica filtri</button>
+            <a href="{{ url_for('gestione_assenze') }}">Azzera filtri</a>
+        </div>
+    </form>
+  </div>
+
+</div>
+
+<h3 style="margin-top:30px;">Assenze inserite</h3>
+<table>
+    <tr>
+        <th>Data</th>
+        <th>Docente</th>
+        <th>Ora</th>
+        <th>Note</th>
+        <th>Azioni</th>
+    </tr>
+    {% for a in assenze %}
+        {% set ore_list = (a.ore or '').split(',') %}
+        {% for ora in ore_list %}
+            {% if ora %}
+            <tr>
+                <td>{{ a.data.strftime('%d/%m/%Y') }}</td>
+                <td>{{ a.docente.cognome }}{% if a.docente.nome %} {{ a.docente.nome }}{% endif %}</td>
+                <td>{{ ora }}</td>
+                <td>{{ a.note }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('cancella_assenza_ora') }}" style="display:inline;">
+                        <input type="hidden" name="assenza_id" value="{{ a.id }}">
+                        <input type="hidden" name="ora" value="{{ ora }}">
+                        <button type="submit" onclick="return confirm('Eliminare ora {{ ora }} per questo docente?');">
+                            Elimina
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endif %}
+        {% endfor %}
+    {% endfor %}
+</table>
+{% endblock %}

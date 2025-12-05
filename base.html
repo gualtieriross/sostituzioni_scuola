@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <title>Sostituzioni</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .navbar { margin-bottom: 20px; }
+        .flash { padding: 8px; margin-bottom: 10px; border-radius: 4px; }
+        .flash.success { background-color: #c8e6c9; }
+        .flash.danger { background-color: #ffcdd2; }
+        .flash.warning { background-color: #fff9c4; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+        th { background: #eee; }
+    </style>
+</head>
+<body>
+<div class="navbar">
+    {% if session.username %}
+        Utente: <strong>{{ session.username }}</strong> |
+        <a href="{{ url_for('gestione_assenze') }}">Assenze</a> |
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% endif %}
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+{% block content %}{% endblock %}
+
+</body>
+</html>
