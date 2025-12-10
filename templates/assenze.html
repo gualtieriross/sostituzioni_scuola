@@ -2,9 +2,9 @@
 {% block content %}
 <h2>Gestione assenze</h2>
 
-<div class="layout-flex" style="margin-bottom: 20px; gap: 32px;">
+<div class="layout-flex" style="gap: 32px;">
 
-  <!-- COLONNA SINISTRA: INSERIMENTO ASSENZA DA ORARIO -->
+  <!-- ▬▬▬▬▬▬▬▬▬ COLONNA SINISTRA → INSERIMENTO ASSENZA ▬▬▬▬▬▬▬▬▬ -->
   <div class="col">
     <h3>Inserisci assenza da orario</h3>
     <form method="post">
@@ -49,8 +49,10 @@
     </form>
   </div>
 
-  <!-- COLONNA DESTRA: FILTRI + VISTA -->
+  <!-- ▬▬▬▬▬▬▬▬▬ COLONNA DESTRA → FILTRI + VISTA + RISULTATI ▬▬▬▬▬▬▬▬▬ -->
   <div class="col">
+
+    <!-- FILTRI -->
     <h3>Filtra assenze</h3>
     <form method="get">
         <div>
@@ -91,74 +93,80 @@
             <a href="{{ url_for('gestione_assenze') }}">Azzera filtri</a>
         </div>
     </form>
-  </div>
 
-</div>
+    <hr style="margin:20px 0;">
 
-{% if view_mode == 'compact' %}
-  <h3>Assenze (vista compatta: docente + giorno)</h3>
-  <div class="table-wrapper">
-    <table>
-        <tr>
-            <th>Data</th>
-            <th>Docente</th>
-            <th>Ore</th>
-            <th>Note</th>
-        </tr>
-        {% for a in assenze %}
+    <!-- ▬▬▬▬▬▬▬ VISTA COMPATTA ▬▬▬▬▬▬▬ -->
+    {% if view_mode == 'compact' %}
+      <h3>Assenze (vista compatta)</h3>
+      <div class="table-wrapper">
+        <table>
             <tr>
-                <td>{{ a.data.strftime('%d/%m/%Y') }}</td>
-                <td>
-                    {{ a.docente.cognome }}
-                    {% if a.docente.nome %} {{ a.docente.nome }}{% endif %}
-                </td>
-                <td>{{ a.ore }}</td>
-                <td>{{ a.note }}</td>
+                <th>Data</th>
+                <th>Docente</th>
+                <th>Ore</th>
+                <th>Note</th>
             </tr>
-        {% endfor %}
-    </table>
-  </div>
-{% else %}
-  <h3>Assenze (vista estesa: docente + giorno + ora)</h3>
-  <div class="table-wrapper">
-    <table>
-        <tr>
-            <th>Data</th>
-            <th>Docente</th>
-            <th>Ora</th>
-            <th>Note</th>
-            <th>Azioni</th>
-        </tr>
-        {% for a in assenze %}
-            {% set ore_list = (a.ore or '').split(',') %}
-            {% for ora in ore_list %}
-                {% if ora %}
+            {% for a in assenze %}
                 <tr>
                     <td>{{ a.data.strftime('%d/%m/%Y') }}</td>
                     <td>
                         {{ a.docente.cognome }}
                         {% if a.docente.nome %} {{ a.docente.nome }}{% endif %}
                     </td>
-                    <td>{{ ora }}</td>
+                    <td>{{ a.ore }}</td>
                     <td>{{ a.note }}</td>
-                    <td>
-                        <form method="post"
-                              action="{{ url_for('cancella_assenza_ora') }}"
-                              style="display:inline;">
-                            <input type="hidden" name="assenza_id" value="{{ a.id }}">
-                            <input type="hidden" name="ora" value="{{ ora }}">
-                            <button type="submit"
-                                    onclick="return confirm('Eliminare ora {{ ora }} per questo docente?');">
-                                Elimina
-                            </button>
-                        </form>
-                    </td>
                 </tr>
-                {% endif %}
             {% endfor %}
-        {% endfor %}
-    </table>
+        </table>
+      </div>
+
+    <!-- ▬▬▬▬▬▬▬ VISTA ESTESA ▬▬▬▬▬▬▬ -->
+    {% else %}
+      <h3>Assenze (vista estesa)</h3>
+      <div class="table-wrapper">
+        <table>
+            <tr>
+                <th>Data</th>
+                <th>Docente</th>
+                <th>Ora</th>
+                <th>Note</th>
+                <th>Azioni</th>
+            </tr>
+            {% for a in assenze %}
+                {% set ore_list = (a.ore or '').split(',') %}
+                {% for ora in ore_list %}
+                    {% if ora %}
+                    <tr>
+                        <td>{{ a.data.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            {{ a.docente.cognome }}
+                            {% if a.docente.nome %} {{ a.docente.nome }}{% endif %}
+                        </td>
+                        <td>{{ ora }}</td>
+                        <td>{{ a.note }}</td>
+                        <td>
+                            <form method="post"
+                                  action="{{ url_for('cancella_assenza_ora') }}"
+                                  style="display:inline;">
+                                <input type="hidden" name="assenza_id" value="{{ a.id }}">
+                                <input type="hidden" name="ora" value="{{ ora }}">
+                                <button type="submit"
+                                        onclick="return confirm('Eliminare ora {{ ora }}?');">
+                                    Elimina
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+        </table>
+      </div>
+    {% endif %}
+
   </div>
-{% endif %}
+</div>
 
 {% endblock %}
+
