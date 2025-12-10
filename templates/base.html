@@ -12,8 +12,26 @@
         .flash.danger { background-color: #ffcdd2; }
         .flash.warning { background-color: #fff9c4; }
         table { border-collapse: collapse; width: 100%; margin-top: 15px; }
-        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }      
         th { background: #eee; }
+        /* Layout a due colonne */
+.       layout-flex {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 32px;
+}
+
+/* Le due colonne */
+.col {
+    flex: 1;
+}
+
+/* Limita un po' la larghezza della colonna sinistra */
+.col:first-child {
+    max-width: 350px;
+}
+
     </style>
 </head>
 <body>
