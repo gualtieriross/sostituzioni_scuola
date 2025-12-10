@@ -148,93 +148,110 @@ def logout():
 @login_required
 def home():
     return redirect(url_for('gestione_assenze'))
-
-
 @app.route('/assenze', methods=['GET', 'POST'])
 @login_required
 def gestione_assenze():
     docenti = Docente.query.filter_by(attivo=True).order_by(Docente.cognome, Docente.nome).all()
+    oggi_iso = date.today().isoformat()
 
     # -----------------
-    # INSERIMENTO ASSENZA DA ORARIO (POST)
+    # INSERIMENTO / AGGIORNAMENTO ASSENZE (POST)
     # -----------------
-
     if request.method == 'POST':
         docente_id = request.form.get('docente_id')
-        data_str = request.form.get('data')
+        data_inizio_str = request.form.get('data_inizio')
+        data_fine_str = request.form.get('data_fine') or data_inizio_str
         note_val = request.form.get('note', '')
 
-        if not docente_id or not data_str:
-            flash("Seleziona docente e data.", 'warning')
+        if not docente_id or not data_inizio_str:
+            flash("Seleziona docente e almeno la data di inizio.", 'warning')
             return redirect(url_for('gestione_assenze'))
 
-        anno, mese, giorno = map(int, data_str.split('-'))
-        data_ass = date(anno, mese, giorno)
+        # converto in date
+        a_i, m_i, g_i = map(int, data_inizio_str.split('-'))
+        a_f, m_f, g_f = map(int, data_fine_str.split('-'))
+        data_inizio = date(a_i, m_i, g_i)
+        data_fine = date(a_f, m_f, g_f)
 
-        # 1️⃣ ORE DA ORARIO PER QUEL GIORNO
-        codice_g = codice_giorno_da_data(data_ass)
-        lezioni = Lezione.query.filter_by(
-            docente_id=int(docente_id),
-            day=codice_g
-        ).all()
+        # se l'utente mette fine prima dell'inizio, inverto
+        if data_fine < data_inizio:
+            data_inizio, data_fine = data_fine, data_inizio
 
-        ore_orario_set = set()
-        for l in lezioni:
-            h = ''.join(ch for ch in (l.hour or '') if ch.isdigit())
-            if h:
-                ore_orario_set.add(h)
+        giorni_con_lezioni = 0
 
-        if not ore_orario_set:
-            flash("Per questo docente non risultano ore a orario in questo giorno.", 'warning')
-            return redirect(url_for('gestione_assenze'))
+        d = data_inizio
+        while d <= data_fine:
+            codice_g = codice_giorno_da_data(d)
 
-        # 2️⃣ ORE GIÀ PRESENTI NELLE ASSENZE PER QUEL DOCENTE+DATA
-        esistenti = Assenza.query.filter_by(
-            docente_id=int(docente_id),
-            data=data_ass
-        ).all()
-
-        ore_esistenti = set()
-        for a in esistenti:
-            for o in (a.ore or '').split(','):
-                o = o.strip()
-                if o:
-                    ore_esistenti.add(o)
-
-        # 3️⃣ UNION: ORE GIA' PRESENTI ∪ ORE DA ORARIO
-        ore_combinate = sorted(ore_esistenti.union(ore_orario_set), key=lambda x: int(x))
-        ore_str = ",".join(ore_combinate)
-
-        if esistenti:
-            # Aggiorno il primo record, elimino eventuali doppioni
-            principale = esistenti[0]
-            principale.ore = ore_str
-
-            # aggiorno le note (se metti qualcosa di nuovo lo aggiungo)
-            if note_val:
-                if principale.note:
-                    principale.note += " | " + note_val
-                else:
-                    principale.note = note_val
-
-            for extra in esistenti[1:]:
-                db.session.delete(extra)
-
-            flash(f"Assenza aggiornata (ore: {ore_str}).", 'success')
-        else:
-            # Nessuna assenza ancora: ne creo una nuova
-            assenza = Assenza(
+            # lezioni di quel docente in quel giorno
+            lezioni = Lezione.query.filter_by(
                 docente_id=int(docente_id),
-                data=data_ass,
-                ore=ore_str,
-                note=note_val
-            )
-            db.session.add(assenza)
-            flash(f"Assenza inserita automaticamente da orario (ore: {ore_str}).", 'success')
+                day=codice_g
+            ).all()
+
+            ore_orario_set = set()
+            for l in lezioni:
+                h = ''.join(ch for ch in (l.hour or '') if ch.isdigit())
+                if h:
+                    ore_orario_set.add(h)
+
+            if not ore_orario_set:
+                # nessuna lezione in quel giorno: passo al successivo senza messaggi
+                d = d.fromordinal(d.toordinal() + 1)
+                continue
+
+            giorni_con_lezioni += 1
+
+            # assenze già presenti per quel docente in quel giorno
+            esistenti = Assenza.query.filter_by(
+                docente_id=int(docente_id),
+                data=d
+            ).all()
+
+            ore_esistenti = set()
+            for a in esistenti:
+                for o in (a.ore or '').split(','):
+                    o = o.strip()
+                    if o:
+                        ore_esistenti.add(o)
+
+            # unisco ore già assenti + ore da orario
+            ore_combinate = sorted(ore_esistenti.union(ore_orario_set), key=lambda x: int(x))
+            ore_str = ",".join(ore_combinate)
+
+            if esistenti:
+                principale = esistenti[0]
+                principale.ore = ore_str
+                if note_val:
+                    if principale.note:
+                        principale.note += " | " + note_val
+                    else:
+                        principale.note = note_val
+
+                # elimino eventuali record duplicati
+                for extra in esistenti[1:]:
+                    db.session.delete(extra)
+            else:
+                nuova = Assenza(
+                    docente_id=int(docente_id),
+                    data=d,
+                    ore=ore_str,
+                    note=note_val
+                )
+                db.session.add(nuova)
+
+            d = d.fromordinal(d.toordinal() + 1)
 
         db.session.commit()
-        return redirect(url_for('gestione_assenze'))
 
+        if giorni_con_lezioni == 0:
+            flash("Nell'intervallo selezionato non risultano ore a orario per questo docente.", 'warning')
+        elif giorni_con_lezioni == 1:
+            flash("Assenza inserita/aggiornata per 1 giorno.", 'success')
+        else:
+            flash(f"Assenze inserite/aggiornate per {giorni_con_lezioni} giorni.", 'success')
+
+        return redirect(url_for('gestione_assenze'))
 
     # -----------------
     # FILTRI (GET)
@@ -252,8 +269,8 @@ def gestione_assenze():
 
     if f_data:
         try:
-            anno, mese, giorno = map(int, f_data.split('-'))
-            data_filtro = date(anno, mese, giorno)
+            a, m, g = map(int, f_data.split('-'))
+            data_filtro = date(a, m, g)
             query = query.filter(Assenza.data == data_filtro)
         except ValueError:
             pass
@@ -265,8 +282,10 @@ def gestione_assenze():
         docenti=docenti,
         assenze=assenze,
         f_docente_id=f_docente_id,
-        f_data=f_data
+        f_data=f_data,
+        data_oggi=oggi_iso   # 👉 per il default del campo data
     )
+
 
 
 # 🔹 Cancella una singola ora da un'assenza
