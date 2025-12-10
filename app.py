@@ -148,6 +148,10 @@ def logout():
 @login_required
 def home():
     return redirect(url_for('gestione_assenze'))
+
+
+
+
 @app.route('/assenze', methods=['GET', 'POST'])
 @login_required
 def gestione_assenze():
@@ -196,7 +200,7 @@ def gestione_assenze():
                     ore_orario_set.add(h)
 
             if not ore_orario_set:
-                # nessuna lezione in quel giorno: passo al successivo senza messaggi
+                # nessuna lezione in quel giorno: passo al successivo
                 d = d.fromordinal(d.toordinal() + 1)
                 continue
 
@@ -254,10 +258,11 @@ def gestione_assenze():
         return redirect(url_for('gestione_assenze'))
 
     # -----------------
-    # FILTRI (GET)
+    # FILTRI (GET) + VISTA
     # -----------------
     f_docente_id = request.args.get('f_docente_id')
     f_data = request.args.get('f_data')
+    view_mode = request.args.get('view', 'extended')  # 'compact' oppure 'extended'
 
     query = Assenza.query
 
@@ -283,9 +288,9 @@ def gestione_assenze():
         assenze=assenze,
         f_docente_id=f_docente_id,
         f_data=f_data,
-        data_oggi=oggi_iso   # 👉 per il default del campo data
+        data_oggi=oggi_iso,   # per default data_inizio
+        view_mode=view_mode
     )
-
 
 
 # 🔹 Cancella una singola ora da un'assenza
