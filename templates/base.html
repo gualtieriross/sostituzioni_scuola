@@ -6,42 +6,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
-        body { 
-            font-family: sans-serif; 
-            margin: 20px; 
+        body {
+            font-family: sans-serif;
+            margin: 20px;
         }
 
         /* NAVBAR */
-        .navbar { 
-            margin-bottom: 20px; 
+        .navbar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
         }
         .navbar a {
             margin-left: 10px;
+            text-decoration: none;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .nav-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         /* FLASH MESSAGES */
-        .flash { 
-            padding: 8px; 
-            margin-bottom: 10px; 
-            border-radius: 4px; 
+        .flash {
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
         }
         .flash.success { background-color: #d9f6d9; }
         .flash.danger { background-color: #ffdcdc; }
         .flash.warning { background-color: #fff9c4; }
 
         /* TABELLE */
-        table { 
-            border-collapse: collapse; 
-            width: 100%; 
-            margin-top: 15px; 
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 15px;
         }
-        th, td { 
-            border: 1px solid #ccc; 
-            padding: 6px; 
-            text-align: left; 
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px;
+            text-align: left;
         }
-        th { 
-            background: #eee; 
+        th {
+            background: #eee;
         }
 
         /* ⭐ LAYOUT A DUE COLONNE ⭐ */
@@ -61,7 +80,6 @@
         .col:first-child {
             max-width: 350px;
         }
-
     </style>
 </head>
 
@@ -70,12 +88,24 @@
     <!-- NAVBAR -->
     <div class="navbar">
         {% if session.username %}
-            Utente: <strong>{{ session.username }}</strong>
-            <a href="{{ url_for('gestione_assenze') }}">Assenze</a> |
-            <a href="{{ url_for('logout') }}">Logout</a>
+            <div class="nav-left">
+                Utente: <strong>{{ session.username }}</strong>
+
+                <!-- sempre visibile -->
+                <a href="{{ url_for('gestione_assenze') }}">Assenze</a>
+
+                <!-- solo ruolo sostituzioni/admin -->
+                {% if session.get('ruolo') in ['sostituzioni', 'admin'] %}
+                    <a href="{{ url_for('lista_sostituzioni') }}">Sostituzioni</a>
+                    <a href="{{ url_for('disponibilita') }}">Calcola sostituzioni</a>
+                {% endif %}
+            </div>
+
+            <div class="nav-right">
+                <a href="{{ url_for('logout') }}">Logout</a>
+            </div>
         {% endif %}
     </div>
-
 
     <!-- FLASH MESSAGES -->
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -85,7 +115,6 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
-
 
     <!-- CONTENUTO DINAMICO -->
     {% block content %}{% endblock %}

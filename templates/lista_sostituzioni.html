@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  h1 { margin-bottom: 10px; }
+  .topbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .muted { color:#666; font-size: 0.95em; }
+
+  table { width:100%; border-collapse: collapse; margin-top: 14px; }
+  th, td { border:1px solid #ddd; padding:8px; }
+  th { background:#f3f3f3; }
+
+  .sostituto-ok { color:#0b6b2f; font-weight:700; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.85em; border:1px solid #ccc; }
+  .tagC { background:#eef6ff; border-color:#b7d7ff; color:#0b4f9e; }
+  .tagD { background:#f6f6f6; border-color:#ddd; color:#333; }
+  .tagEP { background:#fff4e6; border-color:#ffd1a1; color:#8a4b00; }
+  .tagUA { background:#ffeef1; border-color:#ffb8c4; color:#9b0b26; }
+
+  .btn { padding:6px 10px; border:1px solid #bbb; background:#fff; border-radius:6px; cursor:pointer; }
+  .btn-danger { border-color:#c33; color:#c33; font-weight:700; }
+  .btn-mini { padding:4px 8px; font-size:0.9em; }
+</style>
+
+<h1>Sostituzioni</h1>
+
+<div class="topbar">
+  <form method="get" style="display:flex; gap:8px; align-items:center;">
+    <label>Data:</label>
+    <input type="date" name="data" value="{{ data }}">
+    <button class="btn" type="submit">Carica</button>
+  </form>
+
+  <a class="btn" href="{{ url_for('stampa_sostituzioni_word', data=data) }}">Stampa Word</a>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:80px;">Ora</th>
+      <th style="width:120px;">Classe</th>
+      <th>Docente assente</th>
+      <th>Sostituto</th>
+      <th style="width:90px;">Tipo</th>
+      <th style="width:120px;">Azioni</th>
+    </tr>
+  </thead>
+  <tbody>
+
+  {% for r in righe %}
+
+    {# tipo robusto: se tipo vuoto e sostituto è EP/UA lo deduco #}
+    {% set t = (r.get("tipo") or "")|string %}
+    {% set t = t.upper().strip() %}
+    {% set sost_nome = (r.get("sostituto_nome") or "")|string %}
+    {% set sost_nome_u = sost_nome.upper().strip() %}
+    {% if (not t) and (sost_nome_u == "EP" or sost_nome_u == "UA") %}
+      {% set t = sost_nome_u %}
+    {% endif %}
+
+   <tr>
+  <td>{{ r.get("hour","") }}</td>
+  <td>{{ r.get("classe","") }}</td>
+  <td><strong>{{ r.get("assente_nome","") }}</strong></td>
+
+  {# --- COLONNA SOSTITUTO (NO "ID None") --- #}
+  <td>
+    {% if (t|string).upper().strip() == "UA" %}
+      <span class="muted"><em>Uscita anticipata</em></span>
+    {% elif (t|string).upper().strip() == "EP" %}
+      <span class="muted"><em>Entrata posticipata</em></span>
+    {% elif r.get("sostituto_nome") %}
+      <span class="sostituto-ok">{{ r.get("sostituto_nome") }}</span>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+
+  {# --- COLONNA TIPO --- #}
+  <td>
+    <span class="tag
+      {% if t=='C' %}tagC{% elif t=='D' %}tagD{% elif t=='EP' %}tagEP{% elif t=='UA' %}tagUA{% endif %}">
+      {{ t if t else "—" }}
+    </span>
+  </td>
+
+  {# --- AZIONI --- #}
+  <td>
+    <form method="post"
+          action="{{ url_for('cancella_sostituzione', sost_id=r['id']) }}"
+          style="display:inline;">
+      <input type="hidden" name="data" value="{{ data }}">
+      <button class="btn btn-danger btn-mini" type="submit"
+              onclick="return confirm('Eliminare la sostituzione?')">
+        Elimina
+      </button>
+    </form>
+  </td>
+</tr>
+
+  {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

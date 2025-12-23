@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2 style="text-align:center; margin-top:20px;">
+    Gestione Sostituzioni – Home
+</h2>
+
+<p style="text-align:center; color:#555;">
+    Ruolo utente: <strong>{{ session.get('ruolo') }}</strong>
+</p>
+
+<div style="
+    display:flex;
+    gap:20px;
+    justify-content:center;
+    margin-top:40px;
+    flex-wrap:wrap;
+">
+
+    {# ===============================
+       GESTIONE ASSENZE
+       cliccabile: segreteria + sostituzioni
+       =============================== #}
+    {% if session.get('ruolo') in ['segreteria', 'sostituzioni'] %}
+        <a href="{{ url_for('gestione_assenze') }}"
+           style="
+               display:inline-block;
+               width:260px;
+               text-align:center;
+               background:#003366;
+               color:white;
+               padding:18px;
+               border-radius:12px;
+               text-decoration:none;
+               font-size:1.1rem;
+               font-weight:bold;
+           ">
+            Gestione Assenze
+        </a>
+    {% else %}
+        <div style="
+            display:inline-block;
+            width:260px;
+            text-align:center;
+            background:#cccccc;
+            color:#666666;
+            padding:18px;
+            border-radius:12px;
+            font-size:1.1rem;
+            font-weight:bold;
+            cursor:not-allowed;
+        ">
+            Gestione Assenze
+        </div>
+    {% endif %}
+
+    {# ===============================
+       CALCOLO SOSTITUZIONI
+       cliccabile: SOLO sostituzioni
+       =============================== #}
+    {% if session.get('ruolo') == 'sostituzioni' %}
+        <a href="{{ url_for('disponibilita') }}"
+           style="
+               display:inline-block;
+               width:260px;
+               text-align:center;
+               background:#006699;
+               color:white;
+               padding:18px;
+               border-radius:12px;
+               text-decoration:none;
+               font-size:1.1rem;
+               font-weight:bold;
+           ">
+            Calcolo Sostituzioni
+        </a>
+    {% else %}
+        <div title="Accesso riservato all'utente sostituzioni"
+             style="
+                 display:inline-block;
+                 width:260px;
+                 text-align:center;
+                 background:#cccccc;
+                 color:#666666;
+                 padding:18px;
+                 border-radius:12px;
+                 font-size:1.1rem;
+                 font-weight:bold;
+                 cursor:not-allowed;
+             ">
+            Calcolo Sostituzioni
+        </div>
+    {% endif %}
+
+    {# ===============================
+       ELENCO SOSTITUZIONI
+       cliccabile: SOLO sostituzioni
+       =============================== #}
+    {% if session.get('ruolo') == 'sostituzioni' %}
+        <a href="{{ url_for('lista_sostituzioni') }}"
+           style="
+               display:inline-block;
+               width:260px;
+               text-align:center;
+               background:#6699cc;
+               color:white;
+               padding:18px;
+               border-radius:12px;
+               text-decoration:none;
+               font-size:1.1rem;
+               font-weight:bold;
+           ">
+            Elenco Sostituzioni
+        </a>
+    {% else %}
+        <div title="Accesso riservato all'utente sostituzioni"
+             style="
+                 display:inline-block;
+                 width:260px;
+                 text-align:center;
+                 background:#cccccc;
+                 color:#666666;
+                 padding:18px;
+                 border-radius:12px;
+                 font-size:1.1rem;
+                 font-weight:bold;
+                 cursor:not-allowed;
+             ">
+            Elenco Sostituzioni
+        </div>
+    {% endif %}
+
+</div>
+
+{% endblock %}
+

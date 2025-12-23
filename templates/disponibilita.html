@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  h1 { margin-bottom: 10px; }
+  .topbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .muted { color:#666; font-size: 0.95em; }
+  .hour-title { margin: 22px 0 10px; }
+
+  table { width:100%; border-collapse: collapse; }
+  th, td { border:1px solid #ddd; padding:8px; vertical-align: top; }
+  th { background:#f3f3f3; }
+
+  .cell-assente { font-weight:600; }
+  .sostituto-ok { color: #0b6b2f; font-weight:700; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.85em; border:1px solid #ccc; }
+  .tagC { background:#eef6ff; border-color:#b7d7ff; color:#0b4f9e; }
+  .tagD { background:#f6f6f6; border-color:#ddd; color:#333; }
+  .tagEP { background:#fff4e6; border-color:#ffd1a1; color:#8a4b00; }
+  .tagUA { background:#ffeef1; border-color:#ffb8c4; color:#9b0b26; }
+
+  .assign-box { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .radios { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .radio-pill { display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #ddd; border-radius: 10px; background:#fff; }
+  .radio-pill input { margin:0; }
+
+  select { max-width: 320px; width: 100%; padding: 4px; }
+  .btn { padding:6px 10px; border:1px solid #bbb; background:#fff; border-radius:6px; cursor:pointer; }
+  .btn-primary { border-color:#2a6; color:#2a6; font-weight:700; }
+  .btn-danger { border-color:#c33; color:#c33; font-weight:700; }
+  .btn-mini { padding:4px 8px; font-size:0.9em; }
+
+  .stack { display:flex; flex-direction:column; gap:6px; }
+</style>
+
+<h1>Calcola sostituzioni</h1>
+
+<div class="topbar">
+  <form method="get" style="display:flex; gap:8px; align-items:center;">
+    <label>Data:</label>
+    <input type="date" name="data" value="{{ data }}">
+    <button class="btn" type="submit">Carica</button>
+  </form>
+  <span class="muted">UA/EP = uscita anticipata / entrata posticipata.</span>
+</div>
+
+<hr>
+
+{% for hour, righe in by_hour.items() %}
+  <h2 class="hour-title">Ora {{ hour }}</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:110px;">Classe</th>
+        <th style="width:220px;">Docente assente</th>
+        <th>Sostituzione / Assegna</th>
+        <th style="width:90px;">Tipo</th>
+        <th style="width:110px;">Azioni</th>
+      </tr>
+    </thead>
+    <tbody>
+
+    {% for r in righe %}
+
+      {# --- ricavo sostituzione (se esiste) --- #}
+      {% set sost = r.get("sostituzione") %}
+
+      {# --- NOME ASSENTE --- #}
+      {% set assente_nome = r.get("docente_assente_nome") or r.get("assente_nome") or "" %}
+      {% if not assente_nome %}
+        {# fallback: se ti arriva solo id, non rompo pagina #}
+        {% set assente_nome = "—" %}
+      {% endif %}
+
+      {# --- NOME SOSTITUTO (se esiste) --- #}
+      {% set sost_nome = "" %}
+      {% if sost %}
+        {% set sost_nome = sost.get("docente_nome") or sost.get("sostituto_nome") or "" %}
+      {% endif %}
+
+      {# --- TIPO robusto: tipo campo + fallback su nome sostituto EP/UA --- #}
+      {% set t = "" %}
+      {% if sost %}
+        {% set t = (sost.get("tipo") or "")|string %}
+      {% elif r.get("tipo") %}
+        {% set t = (r.get("tipo") or "")|string %}
+      {% endif %}
+      {% set t = t.upper().strip() %}
+
+      {% set sost_nome_upper = (sost_nome|string).upper().strip() %}
+      {% if (not t) and (sost_nome_upper == "EP" or sost_nome_upper == "UA") %}
+        {% set t = sost_nome_upper %}
+      {% endif %}
+
+      <tr>
+        <td>{{ r.get("classe","") }}</td>
+
+        <td class="cell-assente">
+          {{ assente_nome }}
+        </td>
+
+        <td>
+          {% if sost %}
+            {% if sost_nome %}
+              <span class="sostituto-ok">{{ sost_nome }}</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          {% else %}
+            <form method="post" action="{{ url_for('assegna_sostituzione') }}">
+              <input type="hidden" name="data" value="{{ data }}">
+              <input type="hidden" name="hour" value="{{ hour }}">
+              <input type="hidden" name="classe" value="{{ r.get('classe','') }}">
+              <input type="hidden" name="docente_assente_id" value="{{ r.get('docente_assente_id','') }}">
+
+              <div class="stack">
+
+                {# CANDIDATI (radio) #}
+                {% if r.get("candidati") %}
+                  <div class="radios">
+                    {% if r.get("candidati") %}
+                        {% for c in r["candidati"] %}
+                          {# prova a leggere il tipo candidato #}
+                          {% set ct = (c.get("tipo") or "")|string|upper|trim %}
+
+                          {# mostra SOLO candidati reali: escludi EP/UA #}
+                          {% if ct not in ["EP", "UA"] %}
+                            <label style="margin-right:10px; white-space:nowrap;">
+                              <input type="radio"
+                                    name="docente_sostituto_id"
+                                    value="{{ c['docente'].id }}">
+                              <strong>{{ ct }}</strong>
+                              {{ c["docente"].cognome }}
+                            </label>
+                          {% endif %}
+                        {% endfor %}
+                    {% endif %}
+
+                  </div>
+                {% endif %}
+
+                {# MENU A TENDINA (tutti docenti) #}
+                <div class="assign-box">
+                  <select name="docente_sostituto_id">
+                  <option value="">-- scelta manuale (tutti docenti) --</option>
+
+                  {% for d in tutti_docenti %}
+                    <option value="{{ d.id }}">
+                      {{ d.cognome }} {{ d.nome }}
+                    </option>
+                  {% endfor %}
+                </select>
+
+                {% if not tutti_docenti or (tutti_docenti|length == 0) %}
+                  <div style="color:#b00; font-size:12px; margin-top:4px;">
+                    Nessun docente caricato (tutti_docenti è vuoto).
+                  </div>
+                {% endif %}
+
+                  {# UA / EP come tipo (solo due opzioni) #}
+                  <div class="radios">
+                    <label class="radio-pill">
+                      <input type="radio" name="tipo" value="EP">
+                      <span class="tag tagEP">EP</span>
+                    </label>
+                    <label class="radio-pill">
+                      <input type="radio" name="tipo" value="UA">
+                      <span class="tag tagUA">UA</span>
+                    </label>
+                  </div>
+
+                  <button class="btn btn-primary" type="submit">Assegna</button>
+                </div>
+
+              </div>
+            </form>
+          {% endif %}
+        </td>
+
+        <td>
+          <span class="tag
+            {% if t=='C' %}tagC{% elif t=='D' %}tagD{% elif t=='EP' %}tagEP{% elif t=='UA' %}tagUA{% endif %}">
+            {{ t if t else "—" }}
+          </span>
+        </td>
+
+        <td>
+          {% if sost %}
+            <form method="post"
+                  action="{{ url_for('cancella_sostituzione', sost_id=sost.get('id')) }}"
+                  style="display:inline;">
+              <input type="hidden" name="data" value="{{ data }}">
+              <button class="btn btn-danger btn-mini" type="submit"
+                      onclick="return confirm('Eliminare la sostituzione?')">
+                Elimina
+              </button>
+            </form>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+{% endfor %}
+
+{% endblock %}
