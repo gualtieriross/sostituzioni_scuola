@@ -452,7 +452,7 @@ def gestione_assenze():
     if f_data:
         try:
             y, m, d = map(int, f_data.split('-'))
-            query = query.filter(Assenza.data == date(y, m, d))
+            query = query.filter(Assenza.data == date(y, m, d)) 
         except ValueError:
             pass
 

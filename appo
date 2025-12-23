@@ -1,0 +1,23 @@
+def role_required(*roles):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if session.get("ruolo") not in roles:
+                flash("Accesso non autorizzato", "warning")
+                return redirect(url_for("index"))
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+app = Flask(__name__)
+
+# 🔐 Cambialo con una stringa lunga e casuale
+app.config['SECRET_KEY'] = 'cambia-questa-chiave-segreta'
+
+# 🔧 Metti qui i dati del tuo MySQL su Aruba
+# formato: mysql+pymysql://utente:password@host/nome_database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://Sql1904907:Pierino_68@31.11.38.14/Sql1904907_1'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
