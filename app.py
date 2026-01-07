@@ -545,7 +545,7 @@ def disponibilita():
 
     giorno_cod = codice_giorno_da_data(giorno_data)
 
-    # assenze del giorno
+    # 1) assenze del giorno
     assenze_giorno = Assenza.query.filter_by(data=giorno_data).all()
 
     # assenti per ora: hour_tag -> set(docente_id)
@@ -555,33 +555,80 @@ def disponibilita():
             hour_tag = ora_num_to_hour_tag(ora_num)
             assenti_per_hour.setdefault(hour_tag, set()).add(a.docente_id)
 
-    # sostituzioni già inserite nel giorno (per mostrare assegnato)
+    # 2) docenti (una volta)
+    tutti_attivi = (Docente.query
+                    .filter(Docente.attivo == True)
+                    .order_by(Docente.cognome, Docente.nome)
+                    .all())
+    doc_map = {d.id: d for d in tutti_attivi}
+
+    # speciali (EP/UA) una volta
+    speciali = [d for d in tutti_attivi if bool(getattr(d, "fittizio", False))]
+
+    # 3) tutte le lezioni del giorno (una volta)
+    lezioni_giorno = (Lezione.query
+                      .filter(Lezione.day == giorno_cod)
+                      .all())
+
+    # indici veloci
+    # key: (docente_id, hour_tag) -> Lezione (prima che capita; se ne hai più di una nello stesso slot, gestire diversamente)
+    lez_by_doc_hour = {}
+    # key: (hour_tag, classe) -> list[Lezione]
+    lez_by_hour_classe = {}
+    # key: hour_tag -> list[Lezione DISP]
+    disp_by_hour = {}
+
+    for lz in lezioni_giorno:
+        if lz.docente_id is not None and lz.hour:
+            lez_by_doc_hour[(lz.docente_id, lz.hour)] = lz
+
+        if lz.students_set:
+            lez_by_hour_classe.setdefault((lz.hour, lz.students_set), []).append(lz)
+
+        if lz.subject == "DISP":
+            disp_by_hour.setdefault(lz.hour, []).append(lz)
+
+    # 4) sostituzioni già inserite nel giorno (una volta)
     sost_giorno = (Sostituzione.query
                    .filter(Sostituzione.data == giorno_data)
                    .all())
 
     sost_map = {}
+    sostituto_ids = set()
     for sst in sost_giorno:
         key = (sst.hour, (sst.classe or ""), sst.docente_assente_id)
         sost_map[key] = sst
+        if sst.docente_sostituto_id:
+            sostituto_ids.add(sst.docente_sostituto_id)
 
-    # costruzione scoperture
-    by_hour = {}  # hour_tag -> list of scoperture
+    # preload docenti sostituti (evita Docente.query.get nel loop)
+    doc_sost_map = {}
+    if sostituto_ids:
+        docs_sost = Docente.query.filter(Docente.id.in_(list(sostituto_ids))).all()
+        doc_sost_map = {d.id: d for d in docs_sost}
+
+    # 5) usati per ora: una sola query totale
+    usati_rows = (db.session.query(Sostituzione.hour, Sostituzione.docente_sostituto_id)
+                  .filter(Sostituzione.data == giorno_data)
+                  .all())
+    usati_per_hour = {}
+    for h, did in usati_rows:
+        if h and did:
+            usati_per_hour.setdefault(h, set()).add(did)
+
+    # 6) costruzione scoperture (ZERO query)
+    by_hour = {}
 
     for a in assenze_giorno:
-        doc_ass = Docente.query.get(a.docente_id)
+        doc_ass = doc_map.get(a.docente_id)
         nome_ass = f"{doc_ass.cognome} {doc_ass.nome}".strip() if doc_ass else f"ID {a.docente_id}"
 
         for ora_num in ore_str_to_list(a.ore):
             hour_tag = ora_num_to_hour_tag(ora_num)
 
-            lez = Lezione.query.filter_by(
-                docente_id=a.docente_id,
-                day=giorno_cod,
-                hour=hour_tag
-            ).first()
+            lez = lez_by_doc_hour.get((a.docente_id, hour_tag))
 
-            # ✅ se il docente assente in quell'ora era DISP, NON è una scopertura
+            # se in quell'ora era DISP, non è scopertura
             if lez and lez.subject == "DISP":
                 continue
 
@@ -597,30 +644,22 @@ def disponibilita():
                 "dropdown_altri": [],
                 "sostituzione": None
             }
-
             by_hour.setdefault(hour_tag, []).append(scopertura)
 
-    # calcolo candidati + dropdown + sostituzione assegnata
+    # 7) cache candidati per combinazioni (riduce chiamate ripetute)
+    candidati_cache = {}
+
+    # calcolo candidati + dropdown + sostituzione assegnata (quasi zero query)
     for hour_tag, scoperture in by_hour.items():
         assenti_ids = assenti_per_hour.get(hour_tag, set())
-
-        # docenti già usati in quell'ora (per dropdown: escludiamo i reali già usati)
-        usati_ids = {x[0] for x in db.session.query(Sostituzione.docente_sostituto_id)
-                     .filter(Sostituzione.data == giorno_data, Sostituzione.hour == hour_tag)
-                     .all()}
-
-        # tutti docenti attivi
-        tutti_attivi = (Docente.query
-                        .filter(Docente.attivo == True)
-                        .order_by(Docente.cognome, Docente.nome)
-                        .all())
+        usati_ids = usati_per_hour.get(hour_tag, set())
 
         for s in scoperture:
             # sostituzione già presente?
             key = (hour_tag, (s["classe"] or ""), s["docente_assente_id"])
             sst = sost_map.get(key)
             if sst:
-                doc_sost = Docente.query.get(sst.docente_sostituto_id)
+                doc_sost = doc_sost_map.get(sst.docente_sostituto_id)
                 sost_nome = f"{doc_sost.cognome} {doc_sost.nome}".strip() if doc_sost else f"ID {sst.docente_sostituto_id}"
                 s["sostituzione"] = {
                     "id": sst.id,
@@ -628,29 +667,29 @@ def disponibilita():
                     "sostituto_nome": sost_nome
                 }
 
-            # candidati automatici (C/D + EP/UA sempre)
-            s["candidati"] = candidati_per_scopertura(
-                giorno_data=giorno_data,
-                giorno_cod=giorno_cod,
-                hour_tag=hour_tag,
-                classe=s["classe"],
-                docente_assente_id=s["docente_assente_id"],
-                assenti_ids=assenti_ids
-            )
+            # candidati automatici: usa cache
+            ckey = (giorno_data, giorno_cod, hour_tag, s["classe"] or "", s["docente_assente_id"])
+            if ckey not in candidati_cache:
+                # qui puoi usare la tua candidati_per_scopertura ottimizzata (consigliato)
+                candidati_cache[ckey] = candidati_per_scopertura(
+                    giorno_data=giorno_data,
+                    giorno_cod=giorno_cod,
+                    hour_tag=hour_tag,
+                    classe=s["classe"],
+                    docente_assente_id=s["docente_assente_id"],
+                    assenti_ids=assenti_ids
+                )
+            s["candidati"] = candidati_cache[ckey]
 
-            # dropdown (manuale): compresenza prima, poi altri
+            # dropdown compresenza (ZERO query, usa indice lez_by_hour_classe)
             comp_ids = set()
             comp_docenti = []
-
             if s["classe"]:
-                lez_comp = (Lezione.query
-                            .filter(Lezione.day == giorno_cod,
-                                    Lezione.hour == hour_tag,
-                                    Lezione.students_set == s["classe"])
-                            .all())
-
+                lez_comp = lez_by_hour_classe.get((hour_tag, s["classe"]), [])
                 for lez in lez_comp:
                     did = lez.docente_id
+                    if not did:
+                        continue
                     if did == s["docente_assente_id"]:
                         continue
                     if did in assenti_ids:
@@ -660,7 +699,7 @@ def disponibilita():
                     if lez.subject == "DISP":
                         continue
 
-                    doc = Docente.query.get(did)
+                    doc = doc_map.get(did)
                     if doc and doc.attivo and not bool(getattr(doc, "fittizio", False)) and doc.id not in comp_ids:
                         comp_ids.add(doc.id)
                         comp_docenti.append(doc)
@@ -680,9 +719,9 @@ def disponibilita():
 
             s["dropdown_compresenza"] = comp_docenti
             s["dropdown_altri"] = altri
-    tutti_docenti = (Docente.query
-                 .order_by(Docente.cognome, Docente.nome)
-                 .all())
+
+    # lista completa docenti (se ti serve)
+    tutti_docenti = Docente.query.order_by(Docente.cognome, Docente.nome).all()
 
     return render_template(
         'disponibilita.html',
@@ -690,10 +729,6 @@ def disponibilita():
         by_hour=by_hour,
         tutti_docenti=tutti_docenti
     )
-
-  
-
-
 
 @app.route('/sostituzioni/assegna', methods=['POST'])
 @login_required
