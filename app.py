@@ -91,30 +91,28 @@ class Sostituzione(db.Model):
 # ==================
 # UTILITY
 # ==================
+from sqlalchemy import and_
+
 def candidati_per_scopertura(giorno_data, giorno_cod, hour_tag, classe, docente_assente_id, assenti_ids):
-    """
-    Ritorna lista candidati come:
-      [{"docente": <Docente>, "tipo": "C|D|EP|UA"}, ...]
-    Regole:
-      - C: compresenza con assente (stessa classe/ora), esclusi assenti/usati/DISP
-      - D: docenti con DISP a orario (lezioni.subject == 'DISP') in quell'ora, esclusi assenti/usati
-      - EP/UA: docenti fittizi, sempre presenti, non soggetti a "già usato"
-    """
     candidati = []
 
-    # docenti già usati in quell'ora
-    usati_ids = {x[0] for x in db.session.query(Sostituzione.docente_sostituto_id)
-                 .filter(Sostituzione.data == giorno_data, Sostituzione.hour == hour_tag)
-                 .all()}
+    # 1) usati_ids (OK)
+    usati_ids = {
+        x[0] for x in db.session.query(Sostituzione.docente_sostituto_id)
+        .filter(Sostituzione.data == giorno_data, Sostituzione.hour == hour_tag)
+        .all()
+        if x[0] is not None
+    }
 
-    # docenti fittizi (EP/UA)
+    # 2) speciali: questa query è UGUALE per tutte le scoperture → idealmente va fatta UNA VOLTA fuori,
+    # ma intanto la lasciamo qui (poi sotto ti dico come spostarla in cache).
     speciali = (Docente.query
                 .filter(Docente.attivo == True)
                 .filter(getattr(Docente, "fittizio") == 1)
                 .order_by(Docente.cognome, Docente.nome)
                 .all())
 
-    # -------- C: compresenza con l'assente --------
+    lez_in_classe = []
     if classe:
         lez_in_classe = (Lezione.query
                          .filter(Lezione.day == giorno_cod,
@@ -122,48 +120,78 @@ def candidati_per_scopertura(giorno_data, giorno_cod, hour_tag, classe, docente_
                                  Lezione.students_set == classe)
                          .all())
 
-        visti = set()
-        for lez in lez_in_classe:
-            did = lez.docente_id
-
-            if did == docente_assente_id:
-                continue
-            if did in assenti_ids:
-                continue
-            if did in usati_ids:
-                continue
-
-            # evita di considerare "DISP" come compresenza
-            if lez.subject == "DISP":
-                continue
-
-            doc = Docente.query.get(did)
-            if not doc or not doc.attivo:
-                continue
-            if bool(getattr(doc, "fittizio", False)):
-                continue
-
-            if did not in visti:
-                visti.add(did)
-                candidati.append({"docente": doc, "tipo": "C"})
-
-    # -------- D: DISP a orario (subject == 'DISP') --------
     lez_disp = (Lezione.query
                 .filter(Lezione.day == giorno_cod,
                         Lezione.hour == hour_tag,
                         Lezione.subject == "DISP")
                 .all())
 
+    # 3) raccogli TUTTI gli id docenti che potrebbero servirti (una sola fetch)
+    ids_needed = set()
+
+    for lez in lez_in_classe:
+        did = lez.docente_id
+        if not did:
+            continue
+        if did == docente_assente_id:
+            continue
+        if did in assenti_ids or did in usati_ids:
+            continue
+        if lez.subject == "DISP":
+            continue
+        ids_needed.add(did)
+
+    for lez in lez_disp:
+        did = lez.docente_id
+        if not did:
+            continue
+        if did in assenti_ids or did in usati_ids:
+            continue
+        ids_needed.add(did)
+
+    # fetch unica docenti
+    doc_map = {}
+    if ids_needed:
+        docs = (Docente.query
+                .filter(Docente.id.in_(list(ids_needed)))
+                .filter(Docente.attivo == True)
+                .all())
+        doc_map = {d.id: d for d in docs}
+
+    # -------- C: compresenza --------
+    visti = set()
+    for lez in lez_in_classe:
+        did = lez.docente_id
+        if not did:
+            continue
+        if did == docente_assente_id:
+            continue
+        if did in assenti_ids or did in usati_ids:
+            continue
+        if lez.subject == "DISP":
+            continue
+
+        doc = doc_map.get(did)
+        if not doc:
+            continue
+        if bool(getattr(doc, "fittizio", False)):
+            continue
+
+        if did not in visti:
+            visti.add(did)
+            candidati.append({"docente": doc, "tipo": "C"})
+
+    # -------- D: DISP --------
     visti = set()
     for lez in lez_disp:
         did = lez.docente_id
-        if did in assenti_ids:
+        if not did:
             continue
-        if did in usati_ids:
+        if did in assenti_ids or did in usati_ids:
             continue
 
-        doc = Docente.query.get(did)
-        if not doc or not doc.attivo:
+        doc = doc_map.get(did)
+        if not doc:
             continue
         if bool(getattr(doc, "fittizio", False)):
             continue
@@ -172,14 +200,11 @@ def candidati_per_scopertura(giorno_data, giorno_cod, hour_tag, classe, docente_
             visti.add(did)
             candidati.append({"docente": doc, "tipo": "D"})
 
-    # -------- EP/UA: sempre disponibili --------
+    # -------- EP/UA --------
     for sp in speciali:
-        # tipo stampato: "EP" o "UA" (uso il nome breve se lo hai messo così)
-        # Se preferisci, puoi forzarlo con: sp.nome in ("EP","UA")
         tipo_sp = (sp.nome or "").strip().upper() or "SP"
         candidati.append({"docente": sp, "tipo": tipo_sp})
 
-    # ordinamento semplice: C, D, EP, UA, poi cognome
     ordine = {"C": 0, "D": 1, "EP": 2, "UA": 3}
     candidati.sort(key=lambda x: (
         ordine.get(x["tipo"], 9),
